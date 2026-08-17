@@ -10,61 +10,59 @@ DeepSeek Harness 的 **2D 函数图**组合包。对话里让模型画激活函�
 
 ## 用户怎么装
 
-先装好 [`dsh` CLI](https://github.com/deepseek-ai/deepseek-harness)。下面三条里选一条，装进 **web** profile。装好后用 `dsh web` 启动，**不要**再加 `--patch`。
+先装好 [`dsh` CLI](https://github.com/deepseek-ai/deepseek-harness)。装进 **web** profile 后用 `dsh web` 启动，**不要**再加 `--patch`。
 
-### 方式一：本地目录或 tarball（推荐）
+### 方式一：npm（推荐）
 
-不需要 `allowBuilds`，装的是已经编好的 `lib/`。
+包名：[`dsh-function-plot`](https://www.npmjs.com/package/dsh-function-plot)。装的是预构建 `lib/`，不需要 `allowBuilds`。
 
-在插件目录里打包：
+```sh
+dsh plugin --profile web add dsh-function-plot
+dsh --profile web --dump-config    # 应出现 "# == dsh-function-plot"
+dsh web
+```
+
+锁版本（建议）：
+
+```sh
+dsh plugin --profile web add dsh-function-plot@0.1.0
+```
+
+### 方式二：本地目录或 tarball
+
+作者在插件目录里：
 
 ```sh
 pnpm install
 pnpm pack
 ```
 
-得到 `dsh-function-plot-0.1.0.tgz`，发给用户后：
+用户：
 
 ```sh
 dsh plugin --profile web add ./dsh-function-plot-0.1.0.tgz
-dsh --profile web --dump-config    # 应出现 "# == dsh-function-plot"
 dsh web
 ```
 
-开发者若就在本仓库旁，也可以直接链本地 checkout（同样无需授权）：
+或直接链 checkout：`dsh plugin --profile web add /绝对路径/dsh-function-plot`。  
+在 **deepseek-harness 源码树**里开发时，把 `dsh` 换成 `pnpm dsh`。
 
-```sh
-dsh plugin --profile web add /绝对路径/dsh-function-plot
-dsh web
-```
-
-若你是在 **deepseek-harness 源码树**里开发，把上面的 `dsh` 换成 `pnpm dsh`，并先完成该仓库的从源码运行准备。
-
-### 方式二：从 GitHub 装源码
+### 方式三：从 GitHub 装源码
 
 源码仓库：<https://github.com/kirineko/dsh-function-plot>
 
-```sh
-dsh plugin --profile web add github:kirineko/dsh-function-plot#d877d8759103a60e5283c5b910334d3d682026f8
-```
-
-git 安装拉的是源码。第一次会失败：pnpm ≥10 默认拒绝跑依赖的 `prepare`。把报错里的包键写进 **该 profile** 的 `pnpm-workspace.yaml`（一般是 `~/.dsh/profiles/web/pnpm-workspace.yaml`）：
+git 安装拉的是源码，不是 npm 上的构建产物。第一次会失败：pnpm ≥10 默认拒绝跑 `prepare`。把包键写进 `~/.dsh/profiles/web/pnpm-workspace.yaml` 后再 `add` 一次：
 
 ```yaml
 allowBuilds:
   dsh-function-plot: true
 ```
 
-再执行一次同样的 `add`。这表示允许该包在安装时于你的机器上执行构建脚本，且不在 agent 沙箱内。只对可信源码授权，并钉死 commit SHA。
-
-### 方式三：npm（发布到注册表之后）
-
 ```sh
-dsh plugin --profile web add dsh-function-plot
-dsh web
+dsh plugin --profile web add github:kirineko/dsh-function-plot#d877d8759103a60e5283c5b910334d3d682026f8
 ```
 
-装的是预构建包，不需要 `allowBuilds`。
+只对可信源码授权，并钉死 commit SHA。日常使用请走方式一。
 
 ### 卸掉
 
@@ -205,7 +203,7 @@ dsh plugin --profile web remove dsh-function-plot
 pnpm install
 pnpm test
 pnpm build          # 写出 lib/index.js
-pnpm pack           # 预构建 tarball，给方式一用
+pnpm pack           # 预构建 tarball
 ```
 
 在 deepseek-harness 源码树旁做热加载（不是发布路径）：
@@ -215,3 +213,44 @@ pnpm dsh web --patch ./function-plot/cordis.yml
 ```
 
 这条 overlay 用绝对路径加载 TypeScript 源文件，只适合作者本机。发给用户请用上面的 `dsh plugin add`。
+
+### 发布到 npm
+
+本机默认 registry 若是镜像（例如 `registry.npmmirror.com`），**不要**直接 `npm publish`：镜像通常不能往官方源写包。`package.json` 的 `publishConfig.registry` 已钉在 `https://registry.npmjs.org/`。
+
+1. 在 [npmjs.com](https://www.npmjs.com/signup) 注册账号（若还没有）。
+2. 登录**官方源**（不要登录镜像）：
+
+```sh
+npm login --registry https://registry.npmjs.org/
+```
+
+浏览器完成登录后，检查：
+
+```sh
+npm whoami --registry https://registry.npmjs.org/
+```
+
+3. 在插件目录发布（`prepack` 会先跑 `tsdown`，tarball 里带上 `lib/`）：
+
+```sh
+cd /path/to/dsh-function-plot
+pnpm test
+pnpm publish --access public
+```
+
+开了 2FA 时加上 `--otp 一次性密码`。
+
+4. 核对：
+
+```sh
+npm view dsh-function-plot version --registry https://registry.npmjs.org/
+```
+
+用户侧即可：
+
+```sh
+dsh plugin --profile web add dsh-function-plot
+```
+
+改代码后再发：先改 `package.json` 的 `version`（例如 `0.1.1`），再 `pnpm publish`。同一个版本号不能发第二次。
