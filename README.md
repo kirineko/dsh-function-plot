@@ -42,8 +42,10 @@ dsh web
 
 ### 方式二：从 GitHub 装源码
 
+源码仓库：<https://github.com/kirineko/dsh-function-plot>
+
 ```sh
-dsh plugin --profile web add github:kirineko/dsh-function-plot#<commit-sha>
+dsh plugin --profile web add github:kirineko/dsh-function-plot#d877d8759103a60e5283c5b910334d3d682026f8
 ```
 
 git 安装拉的是源码。第一次会失败：pnpm ≥10 默认拒绝跑依赖的 `prepare`。把报错里的包键写进 **该 profile** 的 `pnpm-workspace.yaml`（一般是 `~/.dsh/profiles/web/pnpm-workspace.yaml`）：
