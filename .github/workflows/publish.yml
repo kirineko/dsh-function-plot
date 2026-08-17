@@ -1,0 +1,45 @@
+# Publish to npm when a v* tag is pushed.
+# Auth is npm Trusted Publishing (OIDC). Do not add NPM_TOKEN.
+# The workflow filename "publish.yml" must match the Trusted Publisher
+# setting on https://www.npmjs.com/package/dsh-function-plot/access
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+      - name: Use an npm CLI that speaks Trusted Publishing
+        run: npm install -g npm@latest
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm build
+      - name: Require tag vX.Y.Z to match package.json version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "tag v$tag does not match package.json version $version"
+            exit 1
+          fi
+      - name: Publish
+        run: npm publish --access public --provenance
+        env:
+          NPM_CONFIG_PROVENANCE: true

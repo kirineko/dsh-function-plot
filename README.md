@@ -214,43 +214,65 @@ pnpm dsh web --patch ./function-plot/cordis.yml
 
 这条 overlay 用绝对路径加载 TypeScript 源文件，只适合作者本机。发给用户请用上面的 `dsh plugin add`。
 
-### 发布到 npm
+### 用 GitHub Actions 发布到 npm
 
-本机默认 registry 若是镜像（例如 `registry.npmmirror.com`），**不要**直接 `npm publish`：镜像通常不能往官方源写包。`package.json` 的 `publishConfig.registry` 已钉在 `https://registry.npmjs.org/`。
+日常发版走 CI，**不要**把 npm token 写进 GitHub Secrets。2026 年官方做法是 [Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)（OIDC）：npm 只信任本仓库里名为 `publish.yml` 的工作流。
 
-1. 在 [npmjs.com](https://www.npmjs.com/signup) 注册账号（若还没有）。
-2. 登录**官方源**（不要登录镜像）：
+首次发布有先有后：npm 必须先有这个包，才能在网页上绑定 Trusted Publisher。所以 **0.1.0 在本机发一次**，之后的版本全部打 tag 交给 Actions。
+
+#### 一次性：本机发出 0.1.0，并绑上 GitHub
+
+1. 登录官方源（本机默认若是 npmmirror，必须带 `--registry`）：
 
 ```sh
 npm login --registry https://registry.npmjs.org/
-```
-
-浏览器完成登录后，检查：
-
-```sh
 npm whoami --registry https://registry.npmjs.org/
 ```
 
-3. 在插件目录发布（`prepack` 会先跑 `tsdown`，tarball 里带上 `lib/`）：
+2. 在插件目录发第一个版本：
 
 ```sh
-cd /path/to/dsh-function-plot
 pnpm test
 pnpm publish --access public
 ```
 
-开了 2FA 时加上 `--otp 一次性密码`。
-
-4. 核对：
+开了 2FA 就加 `--otp`。核对：
 
 ```sh
 npm view dsh-function-plot version --registry https://registry.npmjs.org/
 ```
 
-用户侧即可：
+3. 打开包设置：<https://www.npmjs.com/package/dsh-function-plot/access>  
+   找到 **Trusted Publisher**，选 **GitHub Actions**，填：
+
+   | 字段 | 值 |
+   |------|-----|
+   | Organization or user | `kirineko` |
+   | Repository | `dsh-function-plot` |
+   | Workflow filename | `publish.yml` |
+   | Environment name | **留空** |
+
+   只填文件名，不要写成 `.github/workflows/publish.yml`。
+
+4. （建议）同一页把发布策略改成要求 2FA，并在熟悉流程后考虑禁止 token，只允许 Trusted Publisher。
+
+#### 以后每个版本
+
+1. 改 `package.json` 的 `version`（例如 `0.1.1`），提交到 `main`。
+2. 打**和 version 完全一致**的 tag 并推送：
+
+```sh
+git tag v0.1.1
+git push origin main
+git push origin v0.1.1
+```
+
+3. GitHub → Actions 里看 **Publish** 是否变绿。用户即可：
 
 ```sh
 dsh plugin --profile web add dsh-function-plot
 ```
 
-改代码后再发：先改 `package.json` 的 `version`（例如 `0.1.1`），再 `pnpm publish`。同一个版本号不能发第二次。
+`publish.yml` 会跑测试、构建，并检查 tag `vX.Y.Z` 与 `package.json` 的 `version` 一致，不一致会拒绝发布。同一版本号不能发第二次。
+
+不要给这个仓库加 `NPM_TOKEN`。工作流用 `id-token: write` 向 npm 换短期凭证。
