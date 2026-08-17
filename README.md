@@ -6,6 +6,8 @@ DeepSeek Harness 插件：在对话里画 2D 函数图（激活函数、分布�
 
 需要已安装的 [`dsh`](https://github.com/deepseek-ai/deepseek-harness)。装进 **web** profile，用 `dsh web` 启动。不要用 `--patch`。
 
+![plot_function 卡片：远景 / 近景 / 对照与函数信息](docs/preview.webp)
+
 ## 用 npm 安装（推荐）
 
 ```sh
@@ -17,7 +19,7 @@ dsh web
 `dump-config` 里应出现 `# == dsh-function-plot`。锁版本：
 
 ```sh
-dsh plugin --profile web add dsh-function-plot@0.1.4
+dsh plugin --profile web add dsh-function-plot@0.1.5
 ```
 
 ## 从源码安装
@@ -27,7 +29,7 @@ git 拉下来的是源码，没有现成的 `lib/`。要先检出版本、本地
 ```sh
 git clone https://github.com/kirineko/dsh-function-plot.git
 cd dsh-function-plot
-git checkout v0.1.4
+git checkout v0.1.5
 pnpm install
 pnpm build
 dsh plugin --profile web add "$(pwd)"
