@@ -17,7 +17,7 @@ dsh web
 `dump-config` 里应出现 `# == dsh-function-plot`。锁版本：
 
 ```sh
-dsh plugin --profile web add dsh-function-plot@0.1.2
+dsh plugin --profile web add dsh-function-plot@0.1.3
 ```
 
 ## 从源码安装
@@ -27,7 +27,7 @@ git 拉下来的是源码，没有现成的 `lib/`。要先检出版本、本地
 ```sh
 git clone https://github.com/kirineko/dsh-function-plot.git
 cd dsh-function-plot
-git checkout v0.1.2
+git checkout v0.1.3
 pnpm install
 pnpm build
 dsh plugin --profile web add "$(pwd)"
@@ -57,7 +57,7 @@ dsh web
 
 ## 使用
 
-打开 `http://127.0.0.1:3080`，直接说要画什么，例如：
+打开 `http://127.0.0.1:3080`，直接说要画什么。图会出现在 `plot_function` 工具卡片里，不必再让模型调用 `read_image`。例如：
 
 - 对比 ReLU 和 GELU
 - 画标准正态密度

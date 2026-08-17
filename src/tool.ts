@@ -50,6 +50,7 @@ export function registerPlotTool(ctx: Context, config: PlotConfig): void {
       `Catalog: ${CATALOG_HELP}.`,
       'Plot exactly what the user asked for. Set derivative=true only when they ask for a slope, marginal, gradient, or derivative.',
       'Do not add a derivative by default.',
+      'The Web UI already shows the figure on this tool\'s result card. Do not call read_image on the SVG or any converted PNG; DeepSeek models reject image input.',
     ].join(' '),
     parameters: {
       series: {

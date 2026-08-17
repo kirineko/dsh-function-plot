@@ -58,7 +58,22 @@ export function PlotRow({ block }: { block: PlotBlock }) {
       }}
     >
       {svg !== ''
-        ? <div style={{ overflow: 'auto', marginTop: 8 }} dangerouslySetInnerHTML={{ __html: svg }} />
+        ? (
+          <div
+            style={{
+              marginTop: 8,
+              border: '1px solid var(--dsw-alias-border-l1)',
+              borderRadius: 12,
+              overflow: 'hidden',
+              background: 'var(--dsw-alias-bg-base)',
+            }}
+          >
+            <div
+              style={{ display: 'block', width: '100%' }}
+              dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', '<svg style="display:block;width:100%;height:auto;" ') }}
+            />
+          </div>
+        )
         : null}
     </DisclosureRow>
   )
