@@ -35,6 +35,11 @@ describe('expr', () => {
     expect(f(0)).toBeCloseTo(0.5, 8)
   })
 
+  it('accepts log10 and log2', () => {
+    expect(compileExpr('log10(x)')(100)).toBeCloseTo(2, 8)
+    expect(compileExpr('log2(x)')(8)).toBeCloseTo(3, 8)
+  })
+
   it('rejects unknown identifiers', () => {
     expect(() => compileExpr('process.env')).toThrow(/identifier|character/)
     expect(() => compileExpr('foo(x)')).toThrow(/unknown function/)

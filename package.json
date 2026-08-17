@@ -1,11 +1,12 @@
 {
   "name": "dsh-function-plot",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "2D teaching plots for DeepSeek Harness: activations, distributions, and classroom curves",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
-    ".": "./lib/index.js"
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js"
   },
   "files": [
     "lib",
@@ -15,6 +16,14 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-tool"
+      ]
     }
   },
   "scripts": {

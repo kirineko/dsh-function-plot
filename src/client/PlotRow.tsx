@@ -1,27 +1,34 @@
 import { useState } from 'react'
 import { DisclosureRow, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
+
+interface PlotBlock {
+  kind?: string
+  isError?: boolean
+  meta?: unknown
+  argsRaw?: string
+  call?: { argsRaw?: string }
+}
 
 interface PlotMeta {
   title?: unknown
   svg?: unknown
 }
 
-function metaOf(block: ToolCallViewProps['block']): PlotMeta | undefined {
-  if (!('kind' in block) || block.meta === undefined || typeof block.meta !== 'object' || block.meta === null) {
+function metaOf(block: PlotBlock): PlotMeta | undefined {
+  if (block.kind === undefined || block.meta === undefined || typeof block.meta !== 'object' || block.meta === null) {
     return undefined
   }
   return block.meta as PlotMeta
 }
 
-function titleOf(block: ToolCallViewProps['block']): string {
+function titleOf(block: PlotBlock): string {
   const meta = metaOf(block)
   if (typeof meta?.title === 'string' && meta.title !== '') return meta.title
-  const argsRaw = ('kind' in block ? block.call?.argsRaw : block.argsRaw) ?? ''
+  const argsRaw = (block.kind === undefined ? block.argsRaw : block.call?.argsRaw) ?? ''
   try {
     const parsed = JSON.parse(argsRaw) as { series?: Array<{ fn?: string; expr?: string }> }
     const names = (parsed.series ?? []).map(row => row.fn ?? row.expr ?? 'curve')
-    if (names.length > 0) return `Plot ${names.join(', ')}`
+    if (names.length > 0) return names.join(', ')
   } catch {
     // Streaming or malformed args: fall back to the generic title.
   }
@@ -29,14 +36,13 @@ function titleOf(block: ToolCallViewProps['block']): string {
 }
 
 /**
- * Dedicated plot card: collapsed title, expanded inline SVG from presentationMeta.
+ * Dedicated plot card: title row plus the SVG from presentationMeta.
  */
-export function PlotRow({ block }: ToolCallViewProps) {
+export function PlotRow({ block }: { block: PlotBlock }) {
   const [open, setOpen] = useState(true)
-  const settled = 'kind' in block
-  const state = !settled ? 'ongoing' : block.isError ? 'error' : 'done'
-  const meta = metaOf(block)
-  const svg = typeof meta?.svg === 'string' ? meta.svg : ''
+  const settled = block.kind !== undefined
+  const state = !settled ? 'ongoing' : block.isError === true ? 'error' : 'done'
+  const svg = typeof metaOf(block)?.svg === 'string' ? (metaOf(block) as { svg: string }).svg : ''
   const title = titleOf(block)
   const expandable = svg !== '' || settled
 
@@ -52,8 +58,7 @@ export function PlotRow({ block }: ToolCallViewProps) {
       }}
     >
       {svg !== ''
-        // The SVG is produced by this package's renderer, never by model text.
-        ? <div dangerouslySetInnerHTML={{ __html: svg }} />
+        ? <div style={{ overflow: 'auto', marginTop: 8 }} dangerouslySetInnerHTML={{ __html: svg }} />
         : null}
     </DisclosureRow>
   )

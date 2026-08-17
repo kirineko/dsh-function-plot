@@ -174,7 +174,14 @@ export function registerPlotTool(ctx: Context, config: PlotConfig): void {
         signal: exec.signal,
       })
       const intent = await ctx.waterfall('fs/write-intent', target, exec, () => undefined)
-      await ctx.fs.writeText(target, built.svg, intent, exec.signal)
+      // The sandboxed backend falls back to the deployment workspace root when
+      // the per-call policy is omitted. Resolve against the calling session so
+      // a workspace-write session can write its own .dsh-plots/.
+      const sandbox = ctx.get('sandboxPolicy') as {
+        resolve: (request?: { session?: object }) => object
+      } | undefined
+      const policy = sandbox?.resolve(exec.agent === undefined ? {} : { session: exec.agent.session })
+      await ctx.fs.writeText(target, built.svg, intent, exec.signal, policy)
       svgByPath.set(target.displayPath, built.svg)
       return {
         ...built.value,

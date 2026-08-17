@@ -14,6 +14,8 @@ const UNARY: Record<string, (x: number) => number> = {
   exp: Math.exp,
   log: Math.log,
   ln: Math.log,
+  log10: Math.log10,
+  log2: Math.log2,
   abs: Math.abs,
   sqrt: Math.sqrt,
   tanh: Math.tanh,

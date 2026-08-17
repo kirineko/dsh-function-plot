@@ -17,7 +17,7 @@ dsh web
 `dump-config` 里应出现 `# == dsh-function-plot`。锁版本：
 
 ```sh
-dsh plugin --profile web add dsh-function-plot@0.1.1
+dsh plugin --profile web add dsh-function-plot@0.1.2
 ```
 
 ## 从源码安装
@@ -27,7 +27,7 @@ git 拉下来的是源码，没有现成的 `lib/`。要先检出版本、本地
 ```sh
 git clone https://github.com/kirineko/dsh-function-plot.git
 cd dsh-function-plot
-git checkout v0.1.1
+git checkout v0.1.2
 pnpm install
 pnpm build
 dsh plugin --profile web add "$(pwd)"
