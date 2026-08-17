@@ -96,6 +96,7 @@ export interface PlotDomain {
 
 export interface PlotSpec {
   title: string
+  subtitle?: string
   xLabel: string
   yLabel: string
   width: number
@@ -120,8 +121,24 @@ export interface PlotValue {
   series: PlotSeriesValue[]
 }
 
+export interface PlotSeriesInfo {
+  id: string
+  label: string
+  formula: string
+  color: string
+  dashed: boolean
+  derivativeFormula?: string
+  points: Array<{ x: number; y: number; kind: PointKind; label: string }>
+  asymptotes: Asymptote[]
+}
+
 export interface PlotMeta {
   title: string
   svg: string
+  svgNear: string
+  svgFar: string
   domain: PlotDomain
+  near: PlotDomain
+  far: PlotDomain
+  series: PlotSeriesInfo[]
 }

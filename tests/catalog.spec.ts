@@ -57,6 +57,8 @@ describe('buildPlot', () => {
     expect(built.value.series[0]?.derivativeFormula).toBeUndefined()
     expect(built.svg).toContain('<svg')
     expect(built.svg).toContain('σ(x)')
+    expect(built.meta.svgFar).toContain('<svg')
+    expect(built.meta.series[0]?.formula).toContain('σ(x)')
   })
 
   it('adds a dashed derivative only when requested', () => {
@@ -69,6 +71,13 @@ describe('buildPlot', () => {
   it('marks a demand-supply equilibrium', () => {
     const built = buildPlot({ series: [{ fn: 'linear_demand' }, { fn: 'linear_supply' }] }, config)
     expect(built.value.series[0]?.points.some(p => p.kind === 'mean' && p.x === 5 && p.y === 5)).toBe(true)
+  })
+
+  it('builds a tighter near view around ReLU kink', () => {
+    const built = buildPlot({ series: [{ fn: 'relu' }] }, config)
+    expect(built.meta.svgNear).toContain('<svg')
+    expect(built.meta.near.xMax - built.meta.near.xMin).toBeLessThan(built.meta.far.xMax - built.meta.far.xMin)
+    expect(built.meta.series[0]?.points.some(p => p.kind === 'kink')).toBe(true)
   })
 
   it('overlays two activations', () => {

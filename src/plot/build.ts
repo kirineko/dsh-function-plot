@@ -65,7 +65,7 @@ function resolveEvaluator(input: SeriesInput): {
   domain: { xMin: number; xMax: number }
   defined?: (x: number) => boolean
   discontinuities?: (window: { xMin: number; xMax: number }) => number[]
-  annotate: () => { points: ResolvedSeries['points']; asymptotes: ResolvedSeries['asymptotes'] }
+  annotate: (window: { xMin: number; xMax: number }) => { points: ResolvedSeries['points']; asymptotes: ResolvedSeries['asymptotes'] }
 } {
   const hasFn = input.fn !== undefined && input.fn.trim() !== ''
   const hasExpr = input.expr !== undefined && input.expr.trim() !== ''
@@ -86,7 +86,7 @@ function resolveEvaluator(input: SeriesInput): {
       domain: def.domain(p),
       ...def.defined !== undefined ? { defined: (x: number) => def.defined!(x, p) } : {},
       ...def.discontinuities !== undefined ? { discontinuities: (w: { xMin: number; xMax: number }) => def.discontinuities!(w, p) } : {},
-      annotate: () => def.annotate(p, def.domain(p)),
+      annotate: (window) => def.annotate(p, window),
     }
   }
 
@@ -98,7 +98,63 @@ function resolveEvaluator(input: SeriesInput): {
     formula: source,
     evaluate: compiled,
     domain: { xMin: -5, xMax: 5 },
-    annotate: () => ({ points: [], asymptotes: [] }),
+    annotate: (_window) => ({ points: [], asymptotes: [] }),
+  }
+}
+
+function expandWindow(window: { xMin: number; xMax: number }, factor: number): { xMin: number; xMax: number } {
+  const mid = (window.xMin + window.xMax) / 2
+  const half = ((window.xMax - window.xMin) / 2) * factor
+  return { xMin: mid - half, xMax: mid + half }
+}
+
+function clampDefined(
+  window: { xMin: number; xMax: number },
+  defined: Array<(x: number) => boolean>,
+): { xMin: number; xMax: number } {
+  if (defined.length === 0) return window
+  let { xMin, xMax } = window
+  const ok = (x: number): boolean => defined.every(fn => fn(x))
+  if (!ok(xMin)) {
+    let lo = xMin
+    let hi = xMax
+    for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) / 2
+      if (ok(mid)) hi = mid
+      else lo = mid
+    }
+    xMin = hi
+  }
+  if (!ok(xMax)) {
+    let lo = xMin
+    let hi = xMax
+    for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) / 2
+      if (ok(mid)) lo = mid
+      else hi = mid
+    }
+    xMax = lo
+  }
+  if (!(xMax > xMin)) return window
+  return { xMin, xMax }
+}
+
+function nearWindow(
+  far: { xMin: number; xMax: number },
+  xs: number[],
+): { xMin: number; xMax: number } {
+  const span = far.xMax - far.xMin
+  if (xs.length === 0) {
+    const mid = (far.xMin + far.xMax) / 2
+    const half = span * 0.22
+    return { xMin: mid - half, xMax: mid + half }
+  }
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const pad = Math.max(span * 0.12, (maxX - minX) * 0.7, 0.8)
+  return {
+    xMin: Math.max(far.xMin, minX - pad),
+    xMax: Math.min(far.xMax, maxX + pad),
   }
 }
 
@@ -121,35 +177,12 @@ function yBounds(series: ResolvedSeries[]): { yMin: number; yMax: number } {
   return { yMin: yMin - pad, yMax: yMax + pad }
 }
 
-/**
- * Resolve a request into a plot spec (for SVG / UI) and a model-facing value.
- * @param request - tool arguments.
- * @param config - plugin defaults.
- * @returns spec, svg, value, and the replay meta payload.
- */
-export function buildPlot(request: PlotRequest, config: PlotConfig): {
-  spec: PlotSpec
-  svg: string
-  value: Omit<PlotValue, 'path'>
-  meta: Omit<PlotMeta, 'svg'> & { svg: string }
-  suggestedName: string
-} {
-  if (!Array.isArray(request.series) || request.series.length === 0) {
-    throw new Error('series must contain at least one function')
-  }
-  if (request.series.length > MAX_SERIES) throw new Error(`at most ${MAX_SERIES} series`)
-
-  const samples = request.samples ?? config.samples
-  if (!Number.isFinite(samples) || samples < 50 || samples > 2000) {
-    throw new Error('samples must be between 50 and 2000')
-  }
-
-  const resolved = request.series.map(resolveEvaluator)
-  const window = (request.xMin !== undefined && request.xMax !== undefined)
-    ? { xMin: request.xMin, xMax: request.xMax }
-    : unionWindows(resolved.map(item => item.domain))
-  if (!(window.xMax > window.xMin)) throw new Error('xMax must be greater than xMin')
-
+function sampleView(
+  resolved: ReturnType<typeof resolveEvaluator>[],
+  request: PlotRequest,
+  window: { xMin: number; xMax: number },
+  samples: number,
+): ResolvedSeries[] {
   const series: ResolvedSeries[] = []
   let colorIndex = 0
   for (const [index, item] of resolved.entries()) {
@@ -160,7 +193,7 @@ export function buildPlot(request: PlotRequest, config: PlotConfig): {
       ...item.discontinuities !== undefined ? { discontinuities: item.discontinuities } : {},
     }, window, samples)
     if (segments.length === 0) throw new Error(`no finite samples for ${item.label} on [${window.xMin}, ${window.xMax}]`)
-    const marks = item.annotate()
+    const marks = item.annotate(window)
     const wantDerivative = request.series[index]?.derivative === true
     series.push({
       id: item.id,
@@ -193,27 +226,83 @@ export function buildPlot(request: PlotRequest, config: PlotConfig): {
       asymptotes: [],
     })
   }
-
   markMarketClearing(series, request.series)
+  return series
+}
 
-  const y = yBounds(series)
-  const domain: PlotDomain = { ...window, ...y }
-  const title = request.title?.trim() || series.filter(s => !s.dashed).map(s => s.label).join(', ')
-  const spec: PlotSpec = {
+function specOf(
+  title: string,
+  subtitle: string,
+  request: PlotRequest,
+  config: PlotConfig,
+  window: { xMin: number; xMax: number },
+  series: ResolvedSeries[],
+): PlotSpec {
+  return {
     title,
+    subtitle,
     xLabel: request.xLabel?.trim() || 'x',
     yLabel: request.yLabel?.trim() || 'y',
     width: config.width,
     height: config.height,
     theme: config.theme,
-    domain,
+    domain: { ...window, ...yBounds(series) },
     series,
   }
-  const svg = renderSvg(spec)
+}
+
+/**
+ * Resolve a request into far/near teaching views, SVG, and a model-facing value.
+ * @param request - tool arguments.
+ * @param config - plugin defaults.
+ * @returns spec, svg, value, and the replay meta payload.
+ */
+export function buildPlot(request: PlotRequest, config: PlotConfig): {
+  spec: PlotSpec
+  svg: string
+  value: Omit<PlotValue, 'path'>
+  meta: PlotMeta
+  suggestedName: string
+} {
+  if (!Array.isArray(request.series) || request.series.length === 0) {
+    throw new Error('series must contain at least one function')
+  }
+  if (request.series.length > MAX_SERIES) throw new Error(`at most ${MAX_SERIES} series`)
+
+  const samples = request.samples ?? config.samples
+  if (!Number.isFinite(samples) || samples < 50 || samples > 2000) {
+    throw new Error('samples must be between 50 and 2000')
+  }
+
+  const resolved = request.series.map(resolveEvaluator)
+  const asked = (request.xMin !== undefined && request.xMax !== undefined)
+    ? { xMin: request.xMin, xMax: request.xMax }
+    : unionWindows(resolved.map(item => item.domain))
+  if (!(asked.xMax > asked.xMin)) throw new Error('xMax must be greater than xMin')
+  const defined = resolved.flatMap(item => item.defined === undefined ? [] : [item.defined])
+  const far = clampDefined(
+    request.xMin !== undefined && request.xMax !== undefined ? asked : expandWindow(asked, 2.3),
+    defined,
+  )
+  const farSeries = sampleView(resolved, request, far, samples)
+  const focusXs = farSeries.flatMap(item => [
+    ...item.points.map(point => point.x),
+    ...item.asymptotes.filter(line => line.kind === 'vertical').map(line => line.value),
+  ])
+  let near = clampDefined(nearWindow(far, focusXs), defined)
+  if (!(near.xMax - near.xMin > (far.xMax - far.xMin) * 0.18)) near = far
+  const distinctNear = Math.abs(near.xMin - far.xMin) > 1e-6 || Math.abs(near.xMax - far.xMax) > 1e-6
+  const nearSeries = distinctNear ? sampleView(resolved, request, near, samples) : farSeries
+
+  const title = request.title?.trim() || farSeries.filter(s => !s.dashed).map(s => s.label).join(', ')
+  const farSpec = specOf(title, `远景  x ∈ [${formatNum(far.xMin)}, ${formatNum(far.xMax)}]`, request, config, far, farSeries)
+  const nearSpec = specOf(title, `近景  x ∈ [${formatNum(near.xMin)}, ${formatNum(near.xMax)}]`, request, config, near, nearSeries)
+  const svgFar = renderSvg(farSpec)
+  const svgNear = distinctNear ? renderSvg(nearSpec) : ''
   const value = {
     title,
-    domain,
-    series: series.filter(item => !item.dashed).map(item => ({
+    domain: farSpec.domain,
+    series: farSeries.filter(item => !item.dashed).map(item => ({
       id: item.id,
       formula: item.formula,
       ...item.derivativeFormula !== undefined ? { derivativeFormula: item.derivativeFormula } : {},
@@ -222,10 +311,28 @@ export function buildPlot(request: PlotRequest, config: PlotConfig): {
     })),
   }
   return {
-    spec,
-    svg,
+    spec: farSpec,
+    svg: svgFar,
     value,
-    meta: { title, svg, domain },
+    meta: {
+      title,
+      svg: svgFar,
+      svgFar,
+      svgNear,
+      domain: farSpec.domain,
+      far: farSpec.domain,
+      near: nearSpec.domain,
+      series: farSeries.map(item => ({
+        id: item.id,
+        label: item.label,
+        formula: item.formula,
+        color: item.color,
+        dashed: item.dashed,
+        ...item.derivativeFormula !== undefined ? { derivativeFormula: item.derivativeFormula } : {},
+        points: item.points,
+        asymptotes: item.asymptotes,
+      })),
+    },
     suggestedName: `${slug(title)}.svg`,
   }
 }
@@ -234,7 +341,7 @@ export function formatPlotText(value: PlotValue): string {
   const lines = [
     `title: ${value.title}`,
     `file: ${value.path}`,
-    `window: x ∈ [${formatNum(value.domain.xMin)}, ${formatNum(value.domain.xMax)}], y ∈ [${formatNum(value.domain.yMin)}, ${formatNum(value.domain.yMax)}]`,
+    `far: x ∈ [${formatNum(value.domain.xMin)}, ${formatNum(value.domain.xMax)}], y ∈ [${formatNum(value.domain.yMin)}, ${formatNum(value.domain.yMax)}]`,
   ]
   for (const item of value.series) {
     lines.push(`series ${item.id}: ${item.formula}`)

@@ -1,7 +1,7 @@
 /** Publication-style SVG renderer for a resolved plot spec. */
 
 import { formatNum } from './math.ts'
-import type { PlotSpec, SamplePoint } from './types.ts'
+import type { PlotPoint, PlotSpec, SamplePoint } from './types.ts'
 
 interface Theme {
   bg: string
@@ -10,16 +10,20 @@ interface Theme {
   tick: string
   text: string
   muted: string
+  panel: string
+  panelLine: string
 }
 
 const THEMES: Record<'light' | 'dark', Theme> = {
   light: {
-    bg: '#fbfaf7',
-    grid: '#e6e1d6',
-    axis: '#2a2a28',
-    tick: '#6b6560',
-    text: '#1f1d1a',
-    muted: '#8a847c',
+    bg: '#f7f4ee',
+    grid: '#e4ddd0',
+    axis: '#1c1916',
+    tick: '#5c564e',
+    text: '#161412',
+    muted: '#7a746b',
+    panel: '#efeae1',
+    panelLine: '#d9d1c4',
   },
   dark: {
     bg: '#161513',
@@ -28,10 +32,20 @@ const THEMES: Record<'light' | 'dark', Theme> = {
     tick: '#a39e94',
     text: '#f4f0e8',
     muted: '#8d877c',
+    panel: '#1f1d1a',
+    panelLine: '#3a3630',
   },
 }
 
-const PALETTE = ['#1f77b4', '#d62728', '#2ca02c', '#9467bd', '#ff7f0e', '#17becf']
+const PALETTE = ['#1d4ed8', '#be123c', '#047857', '#7c3aed', '#c2410c', '#0e7490']
+
+const KIND_MARK: Record<PlotPoint['kind'], { fill: string; ring: string }> = {
+  intercept: { fill: '#1d4ed8', ring: '#93c5fd' },
+  extremum: { fill: '#c2410c', ring: '#fdba74' },
+  inflection: { fill: '#7c3aed', ring: '#c4b5fd' },
+  kink: { fill: '#be123c', ring: '#fda4af' },
+  mean: { fill: '#047857', ring: '#6ee7b7' },
+}
 
 export function seriesColor(index: number): string {
   return PALETTE[index % PALETTE.length]
@@ -72,10 +86,12 @@ function escapeXml(text: string): string {
  */
 export function renderSvg(spec: PlotSpec): string {
   const theme = THEMES[spec.theme]
-  const { width, height, domain } = spec
-  const pad = { l: 64, r: 28, t: spec.title ? 44 : 24, b: 48 }
+  const { width, domain } = spec
+  const panelH = 28 + spec.series.length * 34
+  const height = spec.height + panelH
+  const pad = { l: 68, r: 22, t: spec.title ? 46 : 22, b: 46 }
   const iw = width - pad.l - pad.r
-  const ih = height - pad.t - pad.b
+  const ih = spec.height - pad.t - pad.b
   const xSpan = domain.xMax - domain.xMin
   const ySpan = domain.yMax - domain.yMin
   const sx = (x: number): number => pad.l + ((x - domain.xMin) / xSpan) * iw
@@ -85,40 +101,44 @@ export function renderSvg(spec: PlotSpec): string {
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">`)
   parts.push(`<rect width="100%" height="100%" fill="${theme.bg}"/>`)
   if (spec.title) {
-    parts.push(`<text x="${width / 2}" y="28" text-anchor="middle" font-family="ui-serif, Georgia, serif" font-size="18" fill="${theme.text}">${escapeXml(spec.title)}</text>`)
+    parts.push(`<text x="${width / 2}" y="26" text-anchor="middle" font-family="ui-serif, Georgia, serif" font-size="19" font-weight="700" fill="${theme.text}">${escapeXml(spec.title)}</text>`)
+  }
+  if (spec.subtitle) {
+    parts.push(`<text x="${width / 2}" y="42" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="${theme.muted}">${escapeXml(spec.subtitle)}</text>`)
   }
 
   for (const x of ticks(domain.xMin, domain.xMax)) {
     parts.push(`<line x1="${sx(x)}" y1="${pad.t}" x2="${sx(x)}" y2="${pad.t + ih}" stroke="${theme.grid}" stroke-width="1"/>`)
-    parts.push(`<text x="${sx(x)}" y="${pad.t + ih + 16}" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="${theme.tick}">${formatNum(x)}</text>`)
+    parts.push(`<text x="${sx(x)}" y="${pad.t + ih + 16}" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="${theme.tick}">${formatNum(x)}</text>`)
   }
   for (const y of ticks(domain.yMin, domain.yMax)) {
     parts.push(`<line x1="${pad.l}" y1="${sy(y)}" x2="${pad.l + iw}" y2="${sy(y)}" stroke="${theme.grid}" stroke-width="1"/>`)
-    parts.push(`<text x="${pad.l - 8}" y="${sy(y) + 4}" text-anchor="end" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="${theme.tick}">${formatNum(y)}</text>`)
+    parts.push(`<text x="${pad.l - 8}" y="${sy(y) + 4}" text-anchor="end" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="${theme.tick}">${formatNum(y)}</text>`)
   }
 
   const x0 = domain.xMin <= 0 && domain.xMax >= 0 ? sx(0) : pad.l
   const y0 = domain.yMin <= 0 && domain.yMax >= 0 ? sy(0) : pad.t + ih
-  parts.push(`<line x1="${pad.l}" y1="${y0}" x2="${pad.l + iw}" y2="${y0}" stroke="${theme.axis}" stroke-width="1.4"/>`)
-  parts.push(`<line x1="${x0}" y1="${pad.t}" x2="${x0}" y2="${pad.t + ih}" stroke="${theme.axis}" stroke-width="1.4"/>`)
-  parts.push(`<polygon points="${pad.l + iw},${y0} ${pad.l + iw - 7},${y0 - 4} ${pad.l + iw - 7},${y0 + 4}" fill="${theme.axis}"/>`)
-  parts.push(`<polygon points="${x0},${pad.t} ${x0 - 4},${pad.t + 7} ${x0 + 4},${pad.t + 7}" fill="${theme.axis}"/>`)
-  parts.push(`<text x="${pad.l + iw}" y="${y0 + 18}" text-anchor="end" font-family="ui-serif, Georgia, serif" font-size="13" fill="${theme.text}">${escapeXml(spec.xLabel)}</text>`)
-  parts.push(`<text x="${x0 + 10}" y="${pad.t + 14}" font-family="ui-serif, Georgia, serif" font-size="13" fill="${theme.text}">${escapeXml(spec.yLabel)}</text>`)
+  parts.push(`<line x1="${pad.l}" y1="${y0}" x2="${pad.l + iw}" y2="${y0}" stroke="${theme.axis}" stroke-width="2"/>`)
+  parts.push(`<line x1="${x0}" y1="${pad.t}" x2="${x0}" y2="${pad.t + ih}" stroke="${theme.axis}" stroke-width="2"/>`)
+  parts.push(`<polygon points="${pad.l + iw},${y0} ${pad.l + iw - 8},${y0 - 5} ${pad.l + iw - 8},${y0 + 5}" fill="${theme.axis}"/>`)
+  parts.push(`<polygon points="${x0},${pad.t} ${x0 - 5},${pad.t + 8} ${x0 + 5},${pad.t + 8}" fill="${theme.axis}"/>`)
+  parts.push(`<text x="${pad.l + iw}" y="${y0 + 18}" text-anchor="end" font-family="ui-serif, Georgia, serif" font-size="13" font-weight="700" fill="${theme.text}">${escapeXml(spec.xLabel)}</text>`)
+  parts.push(`<text x="${x0 + 10}" y="${pad.t + 14}" font-family="ui-serif, Georgia, serif" font-size="13" font-weight="700" fill="${theme.text}">${escapeXml(spec.yLabel)}</text>`)
 
   for (const series of spec.series) {
     for (const line of series.asymptotes) {
       if (line.kind === 'horizontal' && line.value >= domain.yMin && line.value <= domain.yMax) {
-        parts.push(`<line x1="${pad.l}" y1="${sy(line.value)}" x2="${pad.l + iw}" y2="${sy(line.value)}" stroke="${series.color}" stroke-width="1" stroke-dasharray="3 5" opacity="0.55"/>`)
+        parts.push(`<line x1="${pad.l}" y1="${sy(line.value)}" x2="${pad.l + iw}" y2="${sy(line.value)}" stroke="${series.color}" stroke-width="1.6" stroke-dasharray="5 5" opacity="0.7"/>`)
+        parts.push(`<text x="${pad.l + 6}" y="${sy(line.value) - 4}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="700" fill="${series.color}">${escapeXml(line.label)}</text>`)
       }
       if (line.kind === 'vertical' && line.value >= domain.xMin && line.value <= domain.xMax) {
-        parts.push(`<line x1="${sx(line.value)}" y1="${pad.t}" x2="${sx(line.value)}" y2="${pad.t + ih}" stroke="${series.color}" stroke-width="1" stroke-dasharray="3 5" opacity="0.55"/>`)
+        parts.push(`<line x1="${sx(line.value)}" y1="${pad.t}" x2="${sx(line.value)}" y2="${pad.t + ih}" stroke="${series.color}" stroke-width="1.6" stroke-dasharray="5 5" opacity="0.7"/>`)
       }
     }
     for (const segment of series.segments) {
       const d = polyline(segment.points, sx, sy)
       if (d === '') continue
-      parts.push(`<path d="${d}" fill="none" stroke="${series.color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"${series.dashed ? ' stroke-dasharray="7 5"' : ''}/>`)
+      parts.push(`<path d="${d}" fill="none" stroke="${series.color}" stroke-width="3.1" stroke-linejoin="round" stroke-linecap="round"${series.dashed ? ' stroke-dasharray="8 5"' : ''}/>`)
     }
   }
 
@@ -128,26 +148,36 @@ export function renderSvg(spec: PlotSpec): string {
       if (point.x < domain.xMin || point.x > domain.xMax || point.y < domain.yMin || point.y > domain.yMax) continue
       const cx = sx(point.x)
       const cy = sy(point.y)
-      parts.push(`<circle cx="${cx}" cy="${cy}" r="4" fill="${theme.bg}" stroke="${series.color}" stroke-width="1.8"/>`)
+      const mark = KIND_MARK[point.kind]
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="6" fill="${mark.ring}" opacity="0.55"/>`)
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="4.2" fill="${mark.fill}" stroke="${theme.bg}" stroke-width="1.6"/>`)
       const key = `${point.label}@${Math.round(cx)}`
       if (used.has(key)) continue
       used.add(key)
       const nearTop = cy - pad.t < 36
-      const nearRight = (pad.l + iw) - cx < 80
-      const labelX = nearRight ? cx - 8 : cx + 8
+      const nearRight = (pad.l + iw) - cx < 90
+      const labelX = nearRight ? cx - 9 : cx + 9
       const anchor = nearRight ? 'end' : 'start'
-      const labelY = nearTop ? cy + 16 : cy - 8
-      parts.push(`<text x="${labelX}" y="${labelY}" text-anchor="${anchor}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="${theme.text}">${escapeXml(point.label)}</text>`)
+      const labelY = nearTop ? cy + 16 : cy - 9
+      parts.push(`<text x="${labelX}" y="${labelY}" text-anchor="${anchor}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="${theme.text}">${escapeXml(point.label)}</text>`)
     }
   }
 
-  const legendX = pad.l + iw - 8
-  let legendY = pad.t + 16
-  for (const series of spec.series) {
-    parts.push(`<line x1="${legendX - 18}" y1="${legendY}" x2="${legendX}" y2="${legendY}" stroke="${series.color}" stroke-width="2.2"${series.dashed ? ' stroke-dasharray="7 5"' : ''}/>`)
-    parts.push(`<text x="${legendX - 24}" y="${legendY + 4}" text-anchor="end" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="${theme.text}">${escapeXml(series.label)}</text>`)
-    legendY += 18
-  }
+  const panelY = spec.height
+  parts.push(`<rect x="0" y="${panelY}" width="${width}" height="${panelH}" fill="${theme.panel}"/>`)
+  parts.push(`<line x1="0" y1="${panelY}" x2="${width}" y2="${panelY}" stroke="${theme.panelLine}" stroke-width="1"/>`)
+  parts.push(`<text x="16" y="${panelY + 18}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="700" fill="${theme.muted}">函数信息</text>`)
+  spec.series.forEach((series, index) => {
+    const y = panelY + 36 + index * 34
+    parts.push(`<line x1="16" y1="${y - 4}" x2="40" y2="${y - 4}" stroke="${series.color}" stroke-width="3.2"${series.dashed ? ' stroke-dasharray="8 5"' : ''}/>`)
+    const facts = [
+      series.formula,
+      ...series.points.slice(0, 3).map(point => point.label),
+      ...series.asymptotes.slice(0, 2).map(line => line.label),
+    ].join('  ·  ')
+    parts.push(`<text x="48" y="${y - 8}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="${theme.text}">${escapeXml(series.label)}</text>`)
+    parts.push(`<text x="48" y="${y + 8}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="${theme.muted}">${escapeXml(facts)}</text>`)
+  })
 
   parts.push('</svg>')
   return parts.join('')

@@ -50,6 +50,7 @@ export function registerPlotTool(ctx: Context, config: PlotConfig): void {
       `Catalog: ${CATALOG_HELP}.`,
       'Plot exactly what the user asked for. Set derivative=true only when they ask for a slope, marginal, gradient, or derivative.',
       'Do not add a derivative by default.',
+      'When the user wants the function and its derivative together, set derivative=true on that series.',
       'The Web UI already shows the figure on this tool\'s result card. Do not call read_image on the SVG or any converted PNG; DeepSeek models reject image input.',
     ].join(' '),
     parameters: {
@@ -137,11 +138,16 @@ export function registerPlotTool(ctx: Context, config: PlotConfig): void {
         },
       },
       render: (_args, value) => [{ type: 'text', text: formatPlotText(value) }],
-      presentationMeta: (_args, value) => ({
+      presentationMeta: (_args, value) => metaByPath.get(value.path) ?? {
         title: value.title,
         domain: value.domain,
-        svg: svgByPath.get(value.path) ?? '',
-      }),
+        svg: '',
+        svgNear: '',
+        svgFar: '',
+        near: value.domain,
+        far: value.domain,
+        series: [],
+      },
     },
     presentCall(args): GenericCallView {
       const names = args.series.map((row) => {
@@ -170,20 +176,18 @@ export function registerPlotTool(ctx: Context, config: PlotConfig): void {
       const relative = args.path?.trim() || posix.join(config.outputDir, built.suggestedName)
       if (relative.length === 0) throw new Error('path must be a non-empty string')
       const cwd = exec.agent?.session.header.cwd
-      const target = await ctx.fs.resolve(relative, {
+      const opts = {
         ...cwd !== undefined ? { cwd } : {},
         signal: exec.signal,
-      })
+      }
+      const target = await unusedWriteTarget(ctx, relative, opts)
       const intent = await ctx.waterfall('fs/write-intent', target, exec, () => undefined)
-      // The sandboxed backend falls back to the deployment workspace root when
-      // the per-call policy is omitted. Resolve against the calling session so
-      // a workspace-write session can write its own .dsh-plots/.
       const sandbox = ctx.get('sandboxPolicy') as {
         resolve: (request?: { session?: object }) => object
       } | undefined
       const policy = sandbox?.resolve(exec.agent === undefined ? {} : { session: exec.agent.session })
       await ctx.fs.writeText(target, built.svg, intent, exec.signal, policy)
-      svgByPath.set(target.displayPath, built.svg)
+      metaByPath.set(target.displayPath, built.meta)
       return {
         ...built.value,
         path: target.displayPath,
@@ -192,5 +196,16 @@ export function registerPlotTool(ctx: Context, config: PlotConfig): void {
   }))
 }
 
-/** Replayable SVG keyed by the written path; presentationMeta reads this after execute. */
-const svgByPath = new Map<string, string>()
+const metaByPath = new Map<string, import('./plot/types.ts').PlotMeta>()
+
+async function unusedWriteTarget(ctx: Context, relative: string, opts: { cwd?: string; signal?: AbortSignal }) {
+  const ext = posix.extname(relative) || '.svg'
+  const stem = ext === '' ? relative : relative.slice(0, -ext.length)
+  for (let n = 1; n < 50; n++) {
+    const candidate = n === 1 ? relative : `${stem}-${n}${ext}`
+    const target = await ctx.fs.resolve(candidate, opts)
+    const info = await ctx.fs.stat(target, opts.signal)
+    if (info === undefined) return target
+  }
+  throw new Error(`cannot allocate a free path from "${relative}"`)
+}

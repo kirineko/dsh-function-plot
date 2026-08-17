@@ -1,6 +1,6 @@
 {
   "name": "dsh-function-plot",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "2D teaching plots for DeepSeek Harness: activations, distributions, and classroom curves",
   "type": "module",
   "main": "./lib/index.js",
