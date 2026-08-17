@@ -1,0 +1,9 @@
+- insert:
+    - id: function-plot
+      name: '/Users/kirineko/deepseek-harness/function-plot/src/index.ts'
+      config:
+        outputDir: .dsh-plots
+        samples: 400
+        width: 960
+        height: 540
+        theme: light

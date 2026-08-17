@@ -1,0 +1,9 @@
+- insert:
+    - id: function-plot
+      name: dsh-function-plot
+      config:
+        outputDir: .dsh-plots
+        samples: 400
+        width: 960
+        height: 540
+        theme: light

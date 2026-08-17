@@ -1,0 +1,5 @@
+.preview/
+.dsh-plots/
+node_modules/
+lib/
+*.tgz
