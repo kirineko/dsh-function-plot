@@ -1,5 +1,10 @@
 # dsh-function-plot
 
+DeepSeek Harness 插件：让对话支持函数图像绘制，以及把工作区里的 SVG 显示到 Web 页面。
+
+- 画函数：激活函数、分布、课堂曲线；卡片可切换远景 / 近景 / 对照，查看函数信息，下载 SVG
+- 显示 SVG：单独把已有图片渲染到对话里，不必经过函数绘图
+
 ![plot_function](docs/preview.webp)
 
 ## 安装
@@ -37,7 +42,6 @@ allowBuilds:
 
 - 标准模式：独立卡片
 - PTC：`run_code` 下的嵌套卡片
-- 函数图：远景 / 近景 / 对照、函数信息、下载
 - 文件：`.dsh-plots/*.svg`
 
 ## 卸载
