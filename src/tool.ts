@@ -8,6 +8,9 @@ import type { GenericCallView } from '@deepseek-ai/dsh-tools'
 import { buildPlot, formatPlotText } from './plot/build.ts'
 import { CATALOG_IDS } from './plot/types.ts'
 import type { PlotConfig, PlotRequest, SeriesInput } from './plot/types.ts'
+import { claimDisplay } from './display-claim.ts'
+import { encodeUiPayload } from './ui-payload.ts'
+import type { UiPlotPayload } from './ui-payload.ts'
 
 const CATALOG_HELP = CATALOG_IDS.join(', ')
 
@@ -51,7 +54,8 @@ export function registerPlotTool(ctx: Context, config: PlotConfig): void {
       'Plot exactly what the user asked for. Set derivative=true only when they ask for a slope, marginal, gradient, or derivative.',
       'Do not add a derivative by default.',
       'When the user wants the function and its derivative together, set derivative=true on that series.',
-      'The Web UI already shows the figure on this tool\'s result card. Do not call read_image on the SVG or any converted PNG; DeepSeek models reject image input.',
+      'The Web UI already shows the figure on this tool\'s own card, including under run_code.',
+      'Do not call show_svg or read_image on a file this tool just wrote.',
     ].join(' '),
     parameters: {
       series: {
@@ -149,6 +153,24 @@ export function registerPlotTool(ctx: Context, config: PlotConfig): void {
         series: [],
       },
     },
+    finalizeContent(exec, result) {
+      if (exec.parent === undefined || result.isError) return undefined
+      const row = result.value as { path?: unknown }
+      const path = typeof row.path === 'string' ? row.path : ''
+      const meta = metaByPath.get(path)
+      if (meta === undefined) return undefined
+      const payload: UiPlotPayload = {
+        v: 1,
+        kind: 'plot',
+        title: meta.title,
+        path,
+        svg: meta.svg,
+        svgFar: meta.svgFar,
+        svgNear: meta.svgNear,
+        series: meta.series,
+      }
+      return [...result.content, { type: 'text', text: encodeUiPayload(payload) }]
+    },
     presentCall(args): GenericCallView {
       const names = args.series.map((row) => {
         if (typeof row.fn === 'string') return row.fn
@@ -188,6 +210,7 @@ export function registerPlotTool(ctx: Context, config: PlotConfig): void {
       const policy = sandbox?.resolve(exec.agent === undefined ? {} : { session: exec.agent.session })
       await ctx.fs.writeText(target, built.svg, intent, exec.signal, policy)
       metaByPath.set(target.displayPath, built.meta)
+      claimDisplay(exec.parent, target.displayPath)
       return {
         ...built.value,
         path: target.displayPath,

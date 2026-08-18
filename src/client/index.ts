@@ -1,11 +1,12 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { PlotRow } from './PlotRow.tsx'
+import { SvgRow } from './SvgRow.tsx'
 
 export const name = 'function-plot-client'
 export const inject = ['slots']
 
 /**
- * Own the plot_function tool card.
+ * Own the plot_function and show_svg tool cards.
  * @param ctx - browser plugin context with the slot registry.
  */
 export function apply(ctx: Context): void {
@@ -15,8 +16,8 @@ export function apply(ctx: Context): void {
       register: (options: { name: string; key: string }, component: unknown) => unknown
     }
   }).slots
-  slots.inject('tool.call.toolview', () => slots.register(
-    { name: 'tool.call.toolview', key: 'plot_function' },
-    PlotRow,
-  ))
+  slots.inject('tool.call.toolview', function* () {
+    yield slots.register({ name: 'tool.call.toolview', key: 'plot_function' }, PlotRow)
+    yield slots.register({ name: 'tool.call.toolview', key: 'show_svg' }, SvgRow)
+  })
 }

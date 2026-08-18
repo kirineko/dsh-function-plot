@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-fs'
+import { registerShowSvgTool } from './show-svg.ts'
 import { registerPlotTool } from './tool.ts'
 import type { PlotConfig } from './plot/types.ts'
 
@@ -24,7 +25,7 @@ export const Config: Schema<Config> = Schema.object({
 })
 
 /**
- * Register the plot_function tool.
+ * Register plot_function and show_svg.
  * @param ctx - loader context; tools and fs are ready.
  * @param config - validated plugin config.
  */
@@ -37,4 +38,5 @@ export function apply(ctx: Context, config: Config): void {
     theme: config.theme,
   }
   registerPlotTool(ctx, resolved)
+  registerShowSvgTool(ctx)
 }

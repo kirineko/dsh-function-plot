@@ -1,101 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { DisclosureRow, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
-
-interface PlotBlock {
-  kind?: string
-  isError?: boolean
-  meta?: unknown
-  argsRaw?: string
-  call?: { argsRaw?: string }
-}
-
-interface PlotPoint {
-  x: number
-  y: number
-  kind: string
-  label?: string
-}
-
-interface Asymptote {
-  kind: string
-  value: number
-  label: string
-}
-
-interface SeriesInfo {
-  id: string
-  label: string
-  formula: string
-  color: string
-  dashed: boolean
-  derivativeFormula?: string
-  points: PlotPoint[]
-  asymptotes: Asymptote[]
-}
-
-interface PlotMeta {
-  title?: unknown
-  svg?: unknown
-  svgNear?: unknown
-  svgFar?: unknown
-  series?: SeriesInfo[]
-}
+import { downloadSvg, payloadOf, SvgFrame, titleOf } from './svg-view.tsx'
+import type { ToolBlock } from './svg-view.tsx'
+import type { UiSeriesInfo } from '../ui-payload.ts'
 
 type ViewMode = 'far' | 'near' | 'both'
-
-function metaOf(block: PlotBlock): PlotMeta | undefined {
-  if (block.kind === undefined || block.meta === undefined || typeof block.meta !== 'object' || block.meta === null) {
-    return undefined
-  }
-  return block.meta as PlotMeta
-}
-
-function titleOf(block: PlotBlock): string {
-  const meta = metaOf(block)
-  if (typeof meta?.title === 'string' && meta.title !== '') return meta.title
-  const argsRaw = (block.kind === undefined ? block.argsRaw : block.call?.argsRaw) ?? ''
-  try {
-    const parsed = JSON.parse(argsRaw) as { series?: Array<{ fn?: string; expr?: string }> }
-    const names = (parsed.series ?? []).map(row => row.fn ?? row.expr ?? 'curve')
-    if (names.length > 0) return names.join(', ')
-  } catch {
-    // Streaming or malformed args: fall back to the generic title.
-  }
-  return 'Plot'
-}
-
-function asSvg(value: unknown): string {
-  return typeof value === 'string' ? value : ''
-}
-
-function download(filename: string, svg: string): void {
-  const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
-function Frame({ svg }: { svg: string }) {
-  return (
-    <div
-      style={{
-        border: '1px solid var(--dsw-alias-border-l1)',
-        borderRadius: 12,
-        overflow: 'hidden',
-        background: 'var(--dsw-alias-bg-base)',
-      }}
-    >
-      <div
-        dangerouslySetInnerHTML={{
-          __html: svg.replace('<svg ', '<svg style="display:block;width:100%;height:auto;" '),
-        }}
-      />
-    </div>
-  )
-}
 
 function Tab({
   active, label, onClick,
@@ -124,19 +33,68 @@ function Tab({
   )
 }
 
+function Legend({ series }: { series: UiSeriesInfo[] }) {
+  if (series.length === 0) return null
+  return (
+    <div
+      style={{
+        border: '1px solid var(--dsw-alias-border-l2)',
+        borderRadius: 10,
+        padding: '8px 10px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--dsw-alias-label-caption)' }}>函数信息</div>
+      {series.map(item => (
+        <div key={item.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <span
+            style={{
+              width: 18,
+              height: 0,
+              borderTop: item.dashed ? '3px dashed' : '3px solid',
+              borderColor: item.color,
+              marginTop: 7,
+              flex: 'none',
+            }}
+          />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--dsw-alias-label-primary)' }}>{item.label}</div>
+            <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--dsw-alias-label-secondary)' }}>{item.formula}</div>
+            {item.derivativeFormula !== undefined
+              ? <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--dsw-alias-label-tertiary)' }}>导数 {item.derivativeFormula}</div>
+              : null}
+            {item.points.length > 0 || item.asymptotes.length > 0
+              ? (
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--dsw-alias-label-tertiary)' }}>
+                  {[
+                    ...item.points.map(point => point.label ?? `${point.kind} (${point.x}, ${point.y})`),
+                    ...item.asymptotes.map(line => line.label),
+                  ].join(' · ')}
+                </div>
+              )
+              : null}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /**
  * Teaching plot card: far/near views, full legend, download.
  */
-export function PlotRow({ block }: { block: PlotBlock }) {
+export function PlotRow({ block }: { block: ToolBlock }) {
   const [open, setOpen] = useState(true)
   const [view, setView] = useState<ViewMode>('both')
   const settled = block.kind !== undefined
   const state = !settled ? 'ongoing' : block.isError === true ? 'error' : 'done'
-  const meta = metaOf(block)
-  const svgFar = asSvg(meta?.svgFar) || asSvg(meta?.svg)
-  const svgNear = asSvg(meta?.svgNear)
-  const series = Array.isArray(meta?.series) ? meta.series : []
-  const title = titleOf(block)
+  const payload = payloadOf(block)
+  const svgFar = payload?.kind === 'plot' ? (payload.svgFar || payload.svg) : ''
+  const svgNear = payload?.kind === 'plot' ? payload.svgNear : ''
+  const series = payload?.kind === 'plot' ? payload.series : []
+  const title = titleOf(block, 'Plot')
   const expandable = svgFar !== '' || settled
 
   return (
@@ -160,7 +118,7 @@ export function PlotRow({ block }: { block: PlotBlock }) {
               type="button"
               onClick={(event) => {
                 event.stopPropagation()
-                download(`${title || 'plot'}.svg`, view === 'near' ? svgNear || svgFar : svgFar)
+                downloadSvg(`${title || 'plot'}.svg`, view === 'near' ? svgNear || svgFar : svgFar)
               }}
               style={{
                 marginLeft: 'auto',
@@ -180,58 +138,12 @@ export function PlotRow({ block }: { block: PlotBlock }) {
           {view === 'both' && svgNear !== ''
             ? (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <Frame svg={svgFar} />
-                <Frame svg={svgNear} />
+                <SvgFrame svg={svgFar} />
+                <SvgFrame svg={svgNear} />
               </div>
             )
-            : <Frame svg={view === 'near' && svgNear !== '' ? svgNear : svgFar} />}
-          {series.length > 0
-            ? (
-              <div
-                style={{
-                  border: '1px solid var(--dsw-alias-border-l2)',
-                  borderRadius: 10,
-                  padding: '8px 10px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                }}
-              >
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--dsw-alias-label-caption)' }}>函数信息</div>
-                {series.map(item => (
-                  <div key={item.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <span
-                      style={{
-                        width: 18,
-                        height: 0,
-                        borderTop: item.dashed ? '3px dashed' : '3px solid',
-                        borderColor: item.color,
-                        marginTop: 7,
-                        flex: 'none',
-                      }}
-                    />
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--dsw-alias-label-primary)' }}>{item.label}</div>
-                      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--dsw-alias-label-secondary)' }}>{item.formula}</div>
-                      {item.derivativeFormula !== undefined
-                        ? <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--dsw-alias-label-tertiary)' }}>导数 {item.derivativeFormula}</div>
-                        : null}
-                      {item.points.length > 0 || item.asymptotes.length > 0
-                        ? (
-                          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--dsw-alias-label-tertiary)' }}>
-                            {[
-                              ...item.points.map(point => point.label ?? `${point.kind} (${point.x}, ${point.y})`),
-                              ...item.asymptotes.map(line => line.label),
-                            ].join(' · ')}
-                          </div>
-                        )
-                        : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )
-            : null}
+            : <SvgFrame svg={view === 'near' && svgNear !== '' ? svgNear : svgFar} />}
+          <Legend series={series} />
         </div>
       )}
     </DisclosureRow>
